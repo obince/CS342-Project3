@@ -3,7 +3,8 @@
 #include <fcntl.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
-
+#include "tree.h"
+/*
 #define TREE_MEMORY "/tree"
 #define NUMBER_OF_NODES 4096
 #define UNUSED 0
@@ -18,10 +19,10 @@ struct TreeNode {
   int size;
   int status; //0 if unused, 1 if splitted, 2 if used
   int index;
-};
+};*/
 
 int count = 0;
-struct TreeNode *head;
+struct TreeNode* head;
 
 int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
 
@@ -29,15 +30,19 @@ int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
     struct TreeNode* right = head + (2*(node->index) + 2) * sizeof(struct TreeNode);
 
     if(node -> status == UNUSED) {
-        if(requested_chunk_size == node->size)
+        if(requested_chunk_size == node->size) {
+            node-> status = USED;
             return 1;
+        }
         else if(requested_chunk_size < node->size) {
             node -> status = SPLIT;
 
+            left -> parent = node;
             left -> index = 2*(node->index) + 1;
             left -> status = UNUSED;
             left -> size = node -> size / 2;
 
+            right -> parent = node;
             right -> index = 2*(node->index) + 2;
             right -> status = UNUSED;
             right -> size = node-> size / 2;
@@ -56,7 +61,7 @@ int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
     }
     else if(node -> status == USED) {
         count += node -> size;
-        return 0;
+        return -1;
     }
 }
 
@@ -77,16 +82,12 @@ int allocate(int requested_chunk_size) {
 
 void init(int segment_size) {
     int fd, i;
-    fd = shm_open(TREE_MEMORY, O_CREAT, 0666);
+    fd = shm_open(TREE_MEMORY, O_CREAT | O_RDWR, 0666);
 
-    long size = (sizeof(struct TreeNode) * NUMBER_OF_NODES) + 1;
-
+    int size = sizeof(struct TreeNode) * NUMBER_OF_NODES;
     ftruncate(fd, size);
-
     void* ptr = mmap(0, size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
     head = (struct TreeNode*) ptr;
-
     /*
     for( i = 0; i < NUMBER_OF_NODES; i++) {
 
@@ -95,9 +96,34 @@ void init(int segment_size) {
     head -> right = NULL;
     head -> left = NULL;
     head -> parent = NULL;
-    head -> buddy = NULL;
     head -> size = segment_size;
-    head -> status = 0;
+    head -> status = UNUSED;
     head -> index = 0;
-
 }
+
+/*
+void deallocate(int deletion_index) {
+    int buddy_index;
+    if( to_be_deleted->index % 2 == 0){
+        buddy_index = to_be_deleted->index - 1;
+    } else {
+        buddy_index = to_be_deleted->index + 1;
+    }
+
+    struct TreeNode* to_be_deleted = head + deletion_index * sizeof(struct TreeNode);
+    struct TreeNode* buddy_node = head + buddy_index * sizeof(struct TreeNode);
+    to_be_deleted->status = UNUSED;
+
+    while( buddy_node->status == UNUSED){
+        to_be_deleted = head + ((deletion_index - 1) / 2) * sizeof(struct TreeNode);
+        to_be_deleted->status = UNUSED;
+        if( to_be_deleted->index % 2 == 0){
+            buddy_index = to_be_deleted->index - 1;
+        } else {
+            buddy_index = to_be_deleted->index + 1;
+        }
+        buddy_node = head + buddy_index * sizeof(struct TreeNode);
+    }
+
+    return;
+} */
