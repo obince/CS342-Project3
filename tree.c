@@ -4,22 +4,7 @@
 #include <sys/shm.h>
 #include <sys/mman.h>
 #include "tree.h"
-/*
-#define TREE_MEMORY "/tree"
-#define NUMBER_OF_NODES 4096
-#define UNUSED 0
-#define SPLIT 1
-#define USED 2
 
-struct TreeNode {
-  *TreeNode right;
-  *TreeNode left;
-  *TreeNode parent;
-  *TreeNode buddy;
-  int size;
-  int status; //0 if unused, 1 if splitted, 2 if used
-  int index;
-};*/
 
 int count = 0;
 int delete_index = 0;
