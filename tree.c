@@ -22,6 +22,7 @@ struct TreeNode {
 };*/
 
 int count = 0;
+int delete_index = 0;
 struct TreeNode* head;
 
 int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
@@ -31,7 +32,8 @@ int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
 
     if(node -> status == UNUSED) {
         if(requested_chunk_size == node->size) {
-            node-> status = USED;
+            node -> count = count;
+            node -> status = USED;
             return 1;
         }
         else if(requested_chunk_size < node->size) {
@@ -46,6 +48,9 @@ int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
             right -> index = 2*(node->index) + 2;
             right -> status = UNUSED;
             right -> size = node-> size / 2;
+
+            node -> left = left;
+            node -> right = right;
 
             allocate_helper(requested_chunk_size, left);
         }
@@ -67,7 +72,7 @@ int allocate_helper(int requested_chunk_size, struct TreeNode* node) {
 
 int allocate(int requested_chunk_size) {
 
-    if(requested_chunk_size < 128 || requested_chunk_size > 4096)
+    if(requested_chunk_size < 64 || requested_chunk_size > 4096)
         return -1;
 
     count = 0;
@@ -101,21 +106,37 @@ void init(int segment_size) {
     head -> index = 0;
 }
 
-/*
-void deallocate(int deletion_index) {
+int findIndex(int count, struct TreeNode* node) {
+    if(node -> status == USED && node -> count == count) {
+        delete_index = node -> index;
+        return 1;
+    }
+    else if(node -> status == SPLIT) {
+        if(findIndex(count, node->left) == 1) {
+            return 1;
+        }
+        return findIndex(count, node->right);
+    }
+    return -1;
+}
+
+void deallocate(int count) {
+    if(findIndex(count, head) == -1)
+        return;
+
     int buddy_index;
-    if( to_be_deleted->index % 2 == 0){
-        buddy_index = to_be_deleted->index - 1;
+    if( delete_index % 2 == 0){
+        buddy_index = delete_index - 1;
     } else {
-        buddy_index = to_be_deleted->index + 1;
+        buddy_index = delete_index + 1;
     }
 
-    struct TreeNode* to_be_deleted = head + deletion_index * sizeof(struct TreeNode);
+    struct TreeNode* to_be_deleted = head + delete_index * sizeof(struct TreeNode);
     struct TreeNode* buddy_node = head + buddy_index * sizeof(struct TreeNode);
     to_be_deleted->status = UNUSED;
 
     while( buddy_node->status == UNUSED){
-        to_be_deleted = head + ((deletion_index - 1) / 2) * sizeof(struct TreeNode);
+        to_be_deleted = head + ((delete_index - 1) / 2) * sizeof(struct TreeNode);
         to_be_deleted->status = UNUSED;
         if( to_be_deleted->index % 2 == 0){
             buddy_index = to_be_deleted->index - 1;
@@ -126,4 +147,20 @@ void deallocate(int deletion_index) {
     }
 
     return;
-} */
+}
+
+
+void traverse(struct TreeNode* node) {
+    if(node -> status == USED) {
+        printf("index: %d, size: %d\n", node->index, node->size);
+    }
+    else if( node -> status == SPLIT) {
+        printf("SPLIT: index: %d, size: %d\n", node->index, node->size);
+        traverse(node->left);
+        traverse(node->right);
+    }
+}
+
+void traverse_all() {
+    traverse(head);
+}
