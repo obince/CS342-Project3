@@ -18,14 +18,15 @@ int main()
 
     p = sbmem_alloc(256); // allocate space to hold 1024 characters
 
-
+    printf("hebele hubele\n");
     for (i = 0; i < 256; ++i)
         p[i] = 'a'; // init all chars to ‘a’
 
-    printf("%c", p[30]);
+    printf("%c\n", p[30]);
+
     sbmem_free(p);
 
-    sbmem_close();
-    sbmem_remove();
+    //sbmem_close();
+
     return (0);
 }
