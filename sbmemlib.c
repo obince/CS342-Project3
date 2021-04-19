@@ -180,7 +180,7 @@ int sbmem_init(int segmentsize)
         *(void**)ptr = NULL;
 
         if(i == segment_index) {
-            *(void**)ptr = (void*) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE);
+            *(void**)ptr = (void*) (OVER_HEAD_SEGMENT_SIZE);
             printf("Buna atadım %ld\n", (long int) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE));
         }
 
@@ -255,13 +255,9 @@ void* sbmem_alloc(int size)
 
 void sbmem_free (void *p)
 {
-    /*
-    char* ptr = (char*) p;
-    int location = ptr - (char*)memptr;
-
     sem_wait(semap);
-    deallocate(location);
-    sem_post(semap);*/
+    dealloc(p);
+    sem_post(semap);
 }
 
 int sbmem_close()
@@ -293,15 +289,10 @@ void* alloc(int size) {
     else if( freelists[i] != NULL) {
         printf("else if Girdim %d\n", i);
         void* block;
-        block = (void*) ((long int) freelists[i] + (long int) shared_mem); // maybe cast to char* and add smem and cast to void*
+        block = (void*) ((long int) freelists[i] + (long) shared_mem); // maybe cast to char* and add smem and cast to void*
         printf("else if Girdim %ld\n", (long int) block);
-        struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
-        printf("%d, %d", block_ptr->size, block_ptr->status);
-        freelists[i] = (void*) *((void**)freelists[i]); // maybe cast to char* and subtract smem and cast to void*
-        if(freelists[i] == NULL)
-            printf("BEN NULL %d", i);
+        freelists[i] = *((void**)((long) freelists[i] + (long) shared_mem)); // maybe cast to char* and subtract smem and cast to void*
 
-        printf("else if return %d", i);
         return block;
     }
     else {
@@ -317,7 +308,7 @@ void* alloc(int size) {
             buddy = findbuddy(block);
 
             *(void**) buddy = freelists[i];
-            freelists[i] = (void*) ((long int) buddy - (long int) shared_mem);
+            freelists[i] = (void*) ((long) buddy - (long) shared_mem);
 
             struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
 
@@ -342,11 +333,11 @@ void dealloc(void* block) {
     buddy = findbuddy(block);
     p = &freelists[i];
 
-    while((*p != NULL) && (*p != buddy)) p = (void**)*p;
+    while((*p != NULL) && ((void*)((long)*p + (long) shared_mem) != buddy)) p = (void**)*p;
 
-    if(*p != buddy) {
+    if((void*)((long)*p + (long) shared_mem) != buddy) {
         *(void**) block = freelists[i];
-        freelists[i] = block;
+        freelists[i] = (void*) ((long) block - (long) shared_mem);
     }
     else {
         *p = *(void**) buddy;

@@ -21,10 +21,11 @@ int main()
 
     for (i = 0; i < 256; ++i)
         p[i] = 'a'; // init all chars to ‘a’
-    //sbmem_free (p);
+
+    printf("%c", p[30]);
+    sbmem_free(p);
 
     //sbmem_close();
-    printf("%c", p[30]);
     //sbmem_remove();
     return (0);
 }
