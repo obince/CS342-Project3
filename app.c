@@ -25,7 +25,7 @@ int main()
     printf("%c", p[30]);
     sbmem_free(p);
 
-    //sbmem_close();
-    //sbmem_remove();
+    sbmem_close();
+    sbmem_remove();
     return (0);
 }

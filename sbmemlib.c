@@ -152,9 +152,6 @@ int sbmem_init(int segmentsize)
     if( fd < 0)
         return -1; // Error in shared memory creation
 
-
-
-
     int totalSize = OVER_HEAD_SEGMENT_SIZE + segmentsize;
 
     int segment_index = log2_custom(segmentsize);
@@ -243,7 +240,6 @@ int find_required_size(int size) {
 
 void* sbmem_alloc(int size)
 {
-
     int required_size = 1 << (find_required_size(size));
 
     sem_wait(semap);
@@ -322,7 +318,7 @@ void* alloc(int size) {
 }
 
 void dealloc(void* block) {
-    struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
+    struct OverHead* block_ptr = (struct OverHead*) ((char*) block - sizeof(struct OverHead));
 
     int i;
     int size = block_ptr->size;
@@ -330,16 +326,20 @@ void dealloc(void* block) {
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
 
+    printf("dealloc0 %d\n", i);
     buddy = findbuddy(block);
     p = &freelists[i];
 
-    while((*p != NULL) && ((void*)((long)*p + (long) shared_mem) != buddy)) p = (void**)*p;
+    printf("dealloc1 %d\n", i);
+    while((*p != NULL) && ((void*)((long)*p + (long) shared_mem) != buddy)) p = (void**)((void*)((long)*p + (long) shared_mem));
 
+    printf("dealloc2 %d\n", i);
     if((void*)((long)*p + (long) shared_mem) != buddy) {
         *(void**) block = freelists[i];
         freelists[i] = (void*) ((long) block - (long) shared_mem);
     }
     else {
+        printf("dealloc3 %d\n", i);
         *p = *(void**) buddy;
         struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
         if(block_ptr->status == 0) {
