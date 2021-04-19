@@ -48,6 +48,7 @@ struct ProcessTable {
 };
 
 void** freelists;
+void* shared_mem;
 struct ProcessTable* pt;
 struct stat sbuf;
 int count = 0;
@@ -213,11 +214,9 @@ int sbmem_open()
 {
     int fd = shm_open(SHM_NAME, O_RDWR, 0600);
 
-
     fstat(fd, &sbuf);
 
-
-    void *shared_mem = mmap(NULL, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    shared_mem = mmap(NULL, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
     printf("Shared mem addr: %ld\n", (long int)shared_mem);
     if( shared_mem == MAP_FAILED){
@@ -294,11 +293,11 @@ void* alloc(int size) {
     else if( freelists[i] != NULL) {
         printf("else if Girdim %d\n", i);
         void* block;
-        block = freelists[i];
+        block = (void*) ((long int) freelists[i] + (long int) shared_mem); // maybe cast to char* and add smem and cast to void*
         printf("else if Girdim %ld\n", (long int) block);
         struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
         printf("%d, %d", block_ptr->size, block_ptr->status);
-        freelists[i] = *((void**)freelists[i]);
+        freelists[i] = (void*) *((void**)freelists[i]); // maybe cast to char* and subtract smem and cast to void*
         if(freelists[i] == NULL)
             printf("BEN NULL %d", i);
 
@@ -307,7 +306,7 @@ void* alloc(int size) {
     }
     else {
         void* block;
-        void *buddy;
+        void* buddy;
         printf("else girdim %d\n", i);
         block = alloc(TWO_POWER(i+1));
 
@@ -318,7 +317,7 @@ void* alloc(int size) {
             buddy = findbuddy(block);
 
             *(void**) buddy = freelists[i];
-            freelists[i] = buddy;
+            freelists[i] = (void*) ((long int) buddy - (long int) shared_mem);
 
             struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
 
