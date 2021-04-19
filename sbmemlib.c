@@ -162,7 +162,7 @@ int sbmem_init(int segmentsize)
     ftruncate(fd, totalSize);
 
     void *shared_mem = mmap(NULL, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
+    printf("Shared mem addr: %ld", (long int)shared_mem);
     if( shared_mem == MAP_FAILED){
         perror("mmap err");
         return -1;
@@ -180,6 +180,7 @@ int sbmem_init(int segmentsize)
 
         if(i == segment_index) {
             *(void**)ptr = (void*) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE);
+            printf("Buna atadım %ld\n", (long int) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE));
         }
 
         ptr = (char*)ptr + sizeof(void*);
@@ -191,7 +192,7 @@ int sbmem_init(int segmentsize)
     p = p + OVER_HEAD_SEGMENT_SIZE;
 
     *(void**)p = NULL;
-
+    printf("baslangic: %ld\n", (long int)p);
     p = p + sizeof(void*);
     struct OverHead* o_ptr = (struct OverHead* ) p;
 
@@ -210,20 +211,23 @@ int sbmem_remove()
 
 int sbmem_open()
 {
-    semap = sem_open(SEM_NAME, O_RDWR);
-    int fd = shm_open(SHM_NAME, O_RDWR, /*0600*/0666);
+    int fd = shm_open(SHM_NAME, O_RDWR, 0600);
+
+
     fstat(fd, &sbuf);
 
 
     void *shared_mem = mmap(NULL, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    printf("Shared mem addr: %ld", (long int)shared_mem);
+    printf("Shared mem addr: %ld\n", (long int)shared_mem);
     if( shared_mem == MAP_FAILED){
         perror("mmap err");
     }
 
     freelists = (void**)shared_mem;
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(void*));
+
+    semap = sem_open(SEM_NAME, O_RDWR);
 
     if(pt_available(pt)) {
         pt_open(pt);

@@ -8,6 +8,7 @@ int main()
 {
     int i, ret;
     char *p;
+    //sbmem_init(32768);
     printf("Hello\n");
     ret = sbmem_open();
     printf("as\n");
