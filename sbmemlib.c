@@ -234,17 +234,19 @@ void* sbmem_alloc(int size)
     sem_wait(semap);
     void* ptr = alloc(required_size);
     sem_post(semap);
-    struct OverHead* block_ptr = (struct OverHead*) ((char*) ptr + sizeof(void*));
-    printf("son %d\n",block_ptr->size);
+    printf("B%ld\n", (long)ptr);
     ptr =(void*) ((char*) ptr + OVER_HEAD_BLOCK_SIZE);
+    printf("S%ld\n", (long)ptr);
     return ptr;
 }
 
 void sbmem_free (void *p)
 {
-    void* patates = (void*) ((char*)p - OVER_HEAD_BLOCK_SIZE);
+    printf("B%ld\n", (long)p);
+    p =(void*) ((char*) p - (OVER_HEAD_BLOCK_SIZE));
+    printf("S%ld\n", (long)p);
     sem_wait(semap);
-    dealloc(patates);
+    dealloc(p);
     sem_post(semap);
 }
 
