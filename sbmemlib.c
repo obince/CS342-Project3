@@ -23,12 +23,15 @@ sem_t* semap;
 #define USED 2
 #define INDEX_SIZE 18
 #define TWO_POWER(i) (1 << (i))
-#define OVER_HEAD_SEGMENT_SIZE 18 * sizeof(void*) + sizeof(struct ProcessTable)
-#define OVER_HEAD_BLOCK_SIZE sizeof(void*) + sizeof(struct OverHead)
+#define OVER_HEAD_SEGMENT_SIZE 18 * sizeof(long) + sizeof(struct ProcessTable)
+#define OVER_HEAD_BLOCK_SIZE sizeof(struct OverHead)
 
 struct OverHead {
     int size;
     int status;
+    long next;
+    long prev;
+    int tag;
 };
 
 struct ProcessTable {
@@ -38,7 +41,7 @@ struct ProcessTable {
     int allocated[10];
 };
 
-void** freelists;
+long* freelists;
 void* shared_mem;
 struct ProcessTable* pt;
 struct stat sbuf;
@@ -169,7 +172,7 @@ int sbmem_init(int segmentsize)
     ftruncate(fd, totalSize);
 
     void *shared_mem = mmap(NULL, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    printf("Shared mem addr: %ld", (long int)shared_mem);
+    printf("Shared mem addr: %ld\n", (long)shared_mem);
     if( shared_mem == MAP_FAILED){
         perror("mmap err");
         return -1;
@@ -178,33 +181,33 @@ int sbmem_init(int segmentsize)
     char* p = (char*) shared_mem;
 
     for( i = 0; i < totalSize; i++) {
-        p[i] = 0;
+        p[i] = '\0';
     }
 
-    void* ptr = shared_mem;
+    long* ptr = (long*) shared_mem;
     for(i = 0; i < 18; i++) {
-        *(void**)ptr = NULL;
+        ptr[i] = 0;
 
         if(i == segment_index) {
-            *(void**)ptr = (void*) (OVER_HEAD_SEGMENT_SIZE);
-            printf("Buna atadım %ld\n", (long int) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE));
+            ptr[i] = (OVER_HEAD_SEGMENT_SIZE);
+            printf("Buna atadım %ld\n", (long) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE));
         }
-
-        ptr = (char*)ptr + sizeof(void*);
     }
 
-    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(void*));
+    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
     pt_init(pt);
 
     p = p + OVER_HEAD_SEGMENT_SIZE;
 
-    *(void**)p = NULL;
-    printf("baslangic: %ld\n", (long int)p);
-    p = p + sizeof(void*);
+    printf("baslangic: %ld\n", (long)p);
+
     struct OverHead* o_ptr = (struct OverHead* ) p;
 
     o_ptr->size = segmentsize;
     o_ptr->status = 0;
+    o_ptr->next = 0;
+    o_ptr->prev = 0;
+    o_ptr->tag = 1;
 
     return 0;
 }
@@ -221,7 +224,7 @@ int sbmem_remove()
     if( shared_mem == MAP_FAILED){
         perror("mmap err");
     }
-    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(void*));
+    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
     pt_remove(pt);
     shm_unlink(SHM_NAME);
     sem_unlink(SEM_NAME);
@@ -241,8 +244,9 @@ int sbmem_open()
         perror("mmap err");
     }
 
-    freelists = (void**)shared_mem;
-    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(void*));
+    freelists = (long*) shared_mem;
+
+    pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
 
     semap = sem_open(SEM_NAME, O_RDWR);
 
@@ -269,24 +273,26 @@ void* sbmem_alloc(int size)
 
     if(ptr == NULL)
         return NULL;
-    sem_wait(semap);
-    struct OverHead* o_ptr = (struct OverHead*) ((char*) ptr + sizeof(void*));
+
+    struct OverHead* o_ptr = (struct OverHead*) ptr;
 
     pt->allocated[process_i] += o_ptr->size;
     pt->frag[process_i] += (o_ptr->size) - size;
     printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
 
-    ptr =(void*) ((char*) ptr + sizeof(void*) + sizeof(struct OverHead));
-    sem_post(semap);
+    ptr =(void*) ((char*) ptr + sizeof(struct OverHead));
+
     return ptr;
 }
 
 void sbmem_free (void *p)
 {
+    /*
     sem_wait(semap);
-    p =(void*) ((char*) p - sizeof(void*) - sizeof(struct OverHead));
+    p =(void*) ((char*) p - sizeof(struct OverHead));
     dealloc(p);
     sem_post(semap);
+    */
 }
 
 int sbmem_close()
@@ -297,15 +303,15 @@ int sbmem_close()
 }
 
 void* findbuddy(void* block) {
-    char * ptr = (char *) block;
-    char* over_ptr = ptr + sizeof(void*);
-    struct OverHead* ohead = (struct OverHead *) over_ptr;
+    //char * ptr = (char *) block;
+    //char* over_ptr = ptr + sizeof(void*);
+    struct OverHead* ohead = (struct OverHead*) block;
 
     if(ohead->status == 0) {
-        return (void *) (ptr + ohead->size);
+        return (void *) ((char*) block + ohead->size);
     }
     else
-        return (void *) (ptr - ohead->size);
+        return (void *) ((char*) block - ohead->size);
 }
 
 void* alloc(int size) {
@@ -316,14 +322,27 @@ void* alloc(int size) {
         printf("No space exists\n");
         return NULL;
     }
-    else if( freelists[i] != NULL) {
+    else if(freelists[i] != 0) {
         void* block;
-        block = (void*) ((long int) freelists[i] + (long) shared_mem); // maybe cast to char* and add smem and cast to void*
-        //printf("else if Girdim %ld\n", (long int) block);
-        struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
-        freelists[i] = *((void**)((long) freelists[i] + (long) shared_mem)); // maybe cast to char* and subtract smem and cast to void*
+        block = (void*) (freelists[i] + (long) shared_mem); // maybe cast to char* and add smem and cast to void*
+
+        struct OverHead* block_ptr = (struct OverHead*) block;
+        freelists[i] = block_ptr->next;
+
+        void* next_block = (void*) (block_ptr->next + (long) shared_mem);
+        struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+
+        next_block_ptr -> prev = 0;
+
+        //freelists[i] = *((void**)((long) freelists[i] + (long) shared_mem)); // maybe cast to char* and subtract smem and cast to void*
         //printf("ELSE IF BIRADER!! %d, %d\n",block_ptr->size, i);
-        *(void**)block = NULL;
+
+        //*(void**)block = NULL;
+
+        // nexti ve previ null yap
+        block_ptr->next=0;
+        block_ptr->prev=0;
+
         return block;
     }
     else {
@@ -333,25 +352,42 @@ void* alloc(int size) {
         block = alloc(TWO_POWER(i+1));
 
         if(block != NULL) {
-            struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
+
+            //Bölme işlemi yap
+            //buddyi free yap liste koy
+            //blocku dön
+
+            struct OverHead* block_ptr = (struct OverHead*) block;
             block_ptr->size = block_ptr->size / 2;
             printf("BOL: %d, %d\n",block_ptr->size, i);
+
             buddy = findbuddy(block);
+            struct OverHead* buddy_ptr = (struct OverHead*) buddy;
 
-            *(void**) buddy = freelists[i];
-            freelists[i] = (void*) ((long) buddy - (long) shared_mem);
+            //replace
+            //*(void**) buddy = freelists[i];
+            //freelists[i] = (void*) ((long) buddy - (long) shared_mem);
 
-            struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
+            buddy_ptr -> next = freelists[i];
+            buddy_ptr -> prev = 0;
+
+            void* next_block = (void*) (buddy_ptr->next + (long) shared_mem);
+            struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+
+            next_block_ptr -> prev = (long) buddy - (long) shared_mem;
+            freelists[i] = (long) buddy - (long) shared_mem;
+
 
             buddy_ptr->status = block_ptr->status + 1;
             block_ptr->status = 0;
             buddy_ptr->size = block_ptr->size;
-
+            buddy_ptr -> tag = 1;
         }
         return block;
     }
 }
 
+/*
 void dealloc(void* block) {
     struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
 
@@ -373,6 +409,8 @@ void dealloc(void* block) {
     }
     else {
         *p = *(void**) buddy;
+        //*(void**) buddy = NULL;
+        //*(void**) block = NULL;
         struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
         if(block_ptr->status == 0) {
             buddy_ptr->size = buddy_ptr->size * 2;
@@ -392,4 +430,4 @@ void dealloc(void* block) {
 void sbmem_deneme(void* ptr) {
     struct OverHead* o_ptr = (struct OverHead*) ((char*) ptr - sizeof(struct OverHead));
     printf("%d\n", o_ptr->size);
-}
+} */

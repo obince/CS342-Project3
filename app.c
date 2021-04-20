@@ -2,13 +2,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#include <sys/wait.h>
 
 #include "sbmem.h"
 
 int main()
 {
     int i, ret, j, number, k;
-    char* p, *p2, *p3, *p4, *p5;
+    char* p[20];
 
     /*
     printf("Hello\n");
@@ -32,6 +33,7 @@ int main()
     //for(i = 0; i < 5; i++) {
         //pid_t pid = fork();
         //if(pid == 0) {
+
             srand(time(NULL));
             ret = sbmem_open();
 
@@ -40,56 +42,26 @@ int main()
                 exit(1);
             }
 
-            //for(j = 0; j < 4; j++) {
+            for(j = 0; j < 3; j++) {
                 while( (number = rand() % 4096) < 128);
-                printf("pp\n");
-                p = sbmem_alloc(number);
-                while( (number = rand() % 4096) < 128);
-                printf("pp2\n");
-                p2 = sbmem_alloc(number);
-                while( (number = rand() % 4096) < 128);
-                printf("pp3\n");
-                p3 = sbmem_alloc(number);
-                while( (number = rand() % 4096) < 128);
-                printf("pp4\n");
-                p4 = sbmem_alloc(number);
-
-                if(p != NULL) {
-                    //p[j][31] = 's';
-                    //p[j][32] = 'a';
-                    //printf("%c\n", p[j][31]);
-                    printf("p\n");
-                    sbmem_deneme(p);
-                }
-                else {
+                p[j] = sbmem_alloc(number);
+                if(p[j] == NULL) {
                     printf("No space available for %d\n", number);
+                    continue;
                 }
-                if(p != NULL && p2 != NULL && p3 != NULL && p4 != NULL) {
-                    printf("p2\n");
-                    sbmem_free(p2);
-                    sbmem_deneme(p2);
-                    printf("p3\n");
-                    sbmem_free(p3);
-                    sbmem_deneme(p3);
-                    printf("p4\n");
-                    sbmem_free(p4);
-                    sbmem_deneme(p4);
-                }
+                p[j][31] = 's';
+                p[j][32] = 'a';
+                printf("%c\n", p[j][31]);
 
-            //}
-            /*
-            for(k = 0; k < 10; k++) {
-                printf("%d.......\n", k);
-                if(p[k] == NULL) continue;
-
-                if(p[k] != NULL) {
-                    sbmem_free(p[k]);
-                }
-            }*/
-            //exit(0);
+            }
         //}
         //wait(NULL);
-        printf("bitti\n");
+        /*
+        char p[10];
+        p[0] = '\0';
+        if( p[0] == NULL)
+            printf("null\n");
+        printf("bitti\n");*/
     //}
     //sbmem_close();
 
