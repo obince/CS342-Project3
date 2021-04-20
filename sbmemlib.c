@@ -204,7 +204,7 @@ int sbmem_open()
 
     shared_mem = mmap(NULL, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
-    printf("Shared mem addr: %ld\n", (long int)shared_mem);
+    //printf("Shared mem addr: %ld\n", (long int)shared_mem);
     if( shared_mem == MAP_FAILED){
         perror("mmap err");
     }
@@ -234,17 +234,20 @@ void* sbmem_alloc(int size)
     sem_wait(semap);
     void* ptr = alloc(required_size);
     sem_post(semap);
-    printf("B%ld\n", (long)ptr);
+
+    if(ptr == NULL)
+        return NULL;
+    struct OverHead* o_ptr = (struct OverHead*) ((char*) ptr + sizeof(void*));
+
+    printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
+
     ptr =(void*) ((char*) ptr + OVER_HEAD_BLOCK_SIZE);
-    printf("S%ld\n", (long)ptr);
     return ptr;
 }
 
 void sbmem_free (void *p)
 {
-    printf("B%ld\n", (long)p);
     p =(void*) ((char*) p - (OVER_HEAD_BLOCK_SIZE));
-    printf("S%ld\n", (long)p);
     sem_wait(semap);
     dealloc(p);
     sem_post(semap);
@@ -278,25 +281,24 @@ void* alloc(int size) {
         return NULL;
     }
     else if( freelists[i] != NULL) {
-        printf("else if Girdim %d\n", i);
         void* block;
         block = (void*) ((long int) freelists[i] + (long) shared_mem); // maybe cast to char* and add smem and cast to void*
-        printf("else if Girdim %ld\n", (long int) block);
+        //printf("else if Girdim %ld\n", (long int) block);
         struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
         freelists[i] = *((void**)((long) freelists[i] + (long) shared_mem)); // maybe cast to char* and subtract smem and cast to void*
-        printf("ELSE IF BIRADER!! %d, %d\n",block_ptr->size, i);
+        //printf("ELSE IF BIRADER!! %d, %d\n",block_ptr->size, i);
         return block;
     }
     else {
         void* block;
         void* buddy;
-        printf("else girdim %d\n", i);
+        //printf("else girdim %d\n", i);
         block = alloc(TWO_POWER(i+1));
 
         if(block != NULL) {
             struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
             block_ptr->size = block_ptr->size / 2;
-            printf("%d, %d\n",block_ptr->size, i);
+            printf("BOL: %d, %d\n",block_ptr->size, i);
             buddy = findbuddy(block);
 
             *(void**) buddy = freelists[i];
@@ -318,7 +320,7 @@ void dealloc(void* block) {
 
     int i;
     int size = block_ptr->size;
-    printf("%d\n", size);
+    printf("birlestirs %d\n", size);
     void** p;
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
