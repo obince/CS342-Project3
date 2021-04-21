@@ -204,7 +204,7 @@ int sbmem_init(int segmentsize)
     struct OverHead* o_ptr = (struct OverHead* ) p;
 
     o_ptr->size = segmentsize;
-    o_ptr->status = 0;
+    // o_ptr->status = 0;
     o_ptr->next = 0;
     o_ptr->prev = 0;
     o_ptr->tag = 1;
@@ -306,15 +306,20 @@ int sbmem_close()
 }
 
 void* findbuddy(void* block) {
-    //char * ptr = (char *) block;
-    //char* over_ptr = ptr + sizeof(void*);
     struct OverHead* ohead = (struct OverHead*) block;
+    long buddyNo = ((long) block - (long)((char*) shared_mem + 18 * sizeof(long))) / ohead->size;
+    if( buddyNo % 2 == 0){
+        return (void*) ((long) block + ohead->size);
+    } else {
+        return (void*) ((long) block - ohead->size);
+    }
 
+/*
     if(ohead->status == 0) {
         return (void *) ((char*) block + ohead->size);
     }
     else
-        return (void *) ((char*) block - ohead->size);
+        return (void *) ((char*) block - ohead->size);*/
 }
 
 void* alloc(int size) {
@@ -333,11 +338,11 @@ void* alloc(int size) {
 
         printf("Mem address: %ld\n", (long) block);
 
-
-        void* next_block = (void*) (block_ptr->next + (long) shared_mem);
-        struct OverHead* next_block_ptr = (struct OverHead*) next_block;
-
-        next_block_ptr->prev = 0;
+        if(block_ptr->next != 0){
+            void* next_block = (void*) (block_ptr->next + (long) shared_mem);
+            struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+            next_block_ptr->prev = 0;
+        }
 
         block_ptr->next=0;
         block_ptr->prev=0;
@@ -374,13 +379,13 @@ void* alloc(int size) {
 
             freelists[i] = (long) buddy - (long) shared_mem;
 
-            buddy_ptr->status = block_ptr->status + 1;
-            block_ptr->status = 0;
+            //buddy_ptr->status = block_ptr->status + 1;
+            //block_ptr->status = 0;
             buddy_ptr->size = block_ptr->size;
             buddy_ptr -> tag = 1;
             block_ptr -> tag = 1;
             block_ptr->next = 0;
-            block_ptr->prev = 0;
+            block_ptr->prev = 0; // change
         }
         return block;
     }
@@ -412,14 +417,15 @@ void dealloc(void* block) {
     struct OverHead* buddy_ptr = (struct OverHead*) buddy;
 
 
-    // if buddy is not available, add block into freelist and return
-    if(buddy_ptr -> tag == 0) {
-        //eğer freelist boşsa
+    // burada sizeın segmentsizea ulaşıp ulaşmadığını kontrol etmek lazım
+    if(buddy_ptr->tag == 0 || (buddy_ptr->tag == 1 && buddy_ptr->size != block_ptr->size)) {
+        
+        block_ptr->prev = 0;
+        block_ptr->tag = 1;
+
         if(freelists[i] == 0) {
             freelists[i] = (long) block - (long) shared_mem;
-            block_ptr->prev = 0;
             block_ptr->next = 0;
-            block_ptr->tag = 1;
         }
         else { //boş değilse
             void* next_block = (void*) (freelists[i] + (long) shared_mem);
@@ -427,9 +433,7 @@ void dealloc(void* block) {
 
             block_ptr->next = freelists[i];
             freelists[i] = (long) block - (long) shared_mem;
-            block_ptr->prev = 0;
             next_block_ptr->prev = (long) block - (long) shared_mem;
-            block_ptr->tag = 1;
         }
     }
     else if (buddy_ptr-> tag == 1 && buddy_ptr->size == block_ptr->size) {  //buddy availablesa birleştir.
@@ -440,7 +444,6 @@ void dealloc(void* block) {
             if(buddy_ptr-> next != 0) { //NULL değilse
                 void* next_block = (void*) (buddy_ptr->next + (long) shared_mem);
                 struct OverHead* next_block_ptr = (struct OverHead*) next_block;
-
                 next_block_ptr->prev = 0;
             }
         }
@@ -453,17 +456,13 @@ void dealloc(void* block) {
             buddy_ptr ->prev = 0;
         }
 
-        if(block_ptr->status == 0) {
+        if(block < buddy) {
             block_ptr->size = block_ptr->size * 2;
-            block_ptr->status = buddy_ptr->status - 1;
             block_ptr->tag = 1;
-            buddy_ptr->tag = 1;
             dealloc(block);
         }
         else {
             buddy_ptr->size = buddy_ptr->size * 2;
-            buddy_ptr->status = block_ptr->status - 1;
-            block_ptr->tag = 1;
             buddy_ptr->tag = 1;
             dealloc(buddy);
         }
