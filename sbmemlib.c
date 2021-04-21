@@ -14,7 +14,9 @@
 
 // Define semaphore(s)
 #define SEM_NAME "/name_semap"
+#define PT_SEM_NAME "/name_pt"
 sem_t* semap;
+sem_t* pt_semap;
 
 // Define your stuctures and variables.
 #define TREE_MEMORY "/tree"
@@ -28,7 +30,6 @@ sem_t* semap;
 
 struct OverHead {
     int size;
-    int status;
     long next;
     long prev;
     int tag;
@@ -40,7 +41,7 @@ struct ProcessTable {
     int frag[10];
     int allocated[10];
 };
-
+int SGM_SIZE;
 long* freelists;
 void* shared_mem;
 struct ProcessTable* pt;
@@ -91,7 +92,7 @@ int pt_open(struct ProcessTable* pt) {
 
     for( i = 0; i < 10; i++) {
         if( pt->processes[i] == -1) {
-            count++;
+            pt->count = pt->count + 1;
             pt->processes[i] = pid;
             process_i = i;
             return 1;
@@ -116,6 +117,7 @@ void pt_close(struct ProcessTable* pt) {
 
     for( i = 0; i < 10; i++) {
         if(pt->processes[i] == pid) {
+            pt->count = pt->count - 1;
             pt->processes[i] = -1;
             return;
         }
@@ -169,6 +171,7 @@ int sbmem_init(int segmentsize)
     int segment_index = log2_custom(segmentsize);
 
     semap = sem_open(SEM_NAME, O_CREAT, 0666, 1);
+    pt_semap = sem_open(PT_SEM_NAME, O_CREAT | O_RDWR, 0666, 1);
     ftruncate(fd, totalSize);
 
     void *shared_mem = mmap(NULL, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
@@ -225,9 +228,11 @@ int sbmem_remove()
         perror("mmap err");
     }
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
+
     pt_remove(pt);
     shm_unlink(SHM_NAME);
     sem_unlink(SEM_NAME);
+    sem_unlink(PT_SEM_NAME);
     return (0);
 }
 
@@ -236,6 +241,8 @@ int sbmem_open()
     int fd = shm_open(SHM_NAME, O_RDWR, 0600);
 
     fstat(fd, &sbuf);
+
+    SGM_SIZE = sbuf.st_size - (OVER_HEAD_SEGMENT_SIZE);
 
     shared_mem = mmap(NULL, sbuf.st_size, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
@@ -249,12 +256,17 @@ int sbmem_open()
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
 
     semap = sem_open(SEM_NAME, O_RDWR);
+    pt_semap = sem_open(PT_SEM_NAME, O_RDWR);
 
+    sem_wait(pt_semap);
     if(pt_available(pt)) {
         pt_open(pt);
     }
-    else
+    else{
+        sem_post(pt_semap);
         return -1;
+    }
+    sem_post(pt_semap);
     return (0);
 }
 
@@ -277,8 +289,12 @@ void* sbmem_alloc(int size)
 
     struct OverHead* o_ptr = (struct OverHead*) ptr;
     o_ptr->tag = 0;
+
+    sem_wait(pt_semap);
     pt->allocated[process_i] += o_ptr->size;
     pt->frag[process_i] += (o_ptr->size) - size;
+    sem_post(pt_semap);
+
     printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
 
     ptr =(void*) ((char*) ptr + sizeof(struct OverHead));
@@ -300,8 +316,12 @@ void sbmem_free (void *p)
 
 int sbmem_close()
 {
-    sem_close(semap);
+    sem_wait(pt_semap);
     pt_close(pt);
+    sem_post(pt_semap);
+    sem_close(pt_semap);
+
+    sem_close(semap);
     return (0);
 }
 
@@ -397,8 +417,8 @@ void dealloc(void* block) {
 
     int i;
     int size = block_ptr->size;
-    printf("birlestirs %d\n", size);
     printf("Mem address: %ld\n", (long) block);
+    printf("birlestirs %d\n", size);
     //void** p;
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
