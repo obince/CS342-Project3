@@ -8,26 +8,22 @@
 #include <sys/mman.h>
 #include <semaphore.h>
 
-
-// Define a name for your shared memory; you can give any name that start with a slash character; it will be like a filename.
+// Shared memory name
 #define SHM_NAME "/name_project3"
 
-// Define semaphore(s)
+// Semaphores
 #define SEM_NAME "/name_semap"
 #define PT_SEM_NAME "/name_pt"
 sem_t* semap;
 sem_t* pt_semap;
 
-// Define your stuctures and variables.
-#define TREE_MEMORY "/tree"
-#define UNUSED 0
-#define SPLIT 1
-#define USED 2
+// Defined constants
 #define INDEX_SIZE 18
 #define TWO_POWER(i) (1 << (i))
 #define OVER_HEAD_SEGMENT_SIZE 18 * sizeof(long) + sizeof(struct ProcessTable)
 #define OVER_HEAD_BLOCK_SIZE sizeof(struct OverHead)
 
+// Structs
 struct OverHead {
     int size;
     long next;
@@ -41,25 +37,27 @@ struct ProcessTable {
     int frag[10];
     int allocated[10];
 };
+
+// Global variables
 int SGM_SIZE;
 long* freelists;
 void* shared_mem;
 struct ProcessTable* pt;
 struct stat sbuf;
-int count = 0;
 int delete_index = 0;
-struct TreeNode* head;
-void* memptr;
-int tots;
 int process_i;
 int index_size;
-//Function prot
+
+// Function prototypes
 void dealloc(void* block);
 void* alloc(int size);
 int find_required_size(int size);
 void* findbuddy(void* block);
 
-
+/**
+ *  Checks if the invoking process exists
+ *  in the process table or not
+ */
 int processExists(struct ProcessTable* pt) {
     int i;
     pid_t pid = getpid();
@@ -71,11 +69,15 @@ int processExists(struct ProcessTable* pt) {
     return 0;
 }
 
+/**
+ *  If process table (shared memory) is available
+ *  for a new process, return true
+ */
 int pt_available(struct ProcessTable* pt) {
     int i;
     pid_t pid = getpid();
 
-    if(count >= 10)
+    if(pt->count >= 10)
         return 0;
 
     for( i = 0; i < 10; i++) {
@@ -86,6 +88,9 @@ int pt_available(struct ProcessTable* pt) {
     return 1;
 }
 
+/**
+ *  Include the invoking process to process table
+ */
 int pt_open(struct ProcessTable* pt) {
     int i;
     pid_t pid = getpid();
@@ -101,6 +106,9 @@ int pt_open(struct ProcessTable* pt) {
     return 0;
 }
 
+/**
+ *  Initialize the process table
+ */
 void pt_init(struct ProcessTable* pt) {
     int i;
     pt->count = 0;
@@ -111,6 +119,10 @@ void pt_init(struct ProcessTable* pt) {
     }
 }
 
+/**
+ *  Remove the invoking process from the
+ *  process table
+ */
 void pt_close(struct ProcessTable* pt) {
     int i;
     pid_t pid = getpid();
@@ -122,8 +134,13 @@ void pt_close(struct ProcessTable* pt) {
             return;
         }
     }
+    return;
 }
 
+/**
+ *  Destroy the process table and report the
+ *  fragmentation and allocated memory info
+ */
 void pt_remove(struct ProcessTable* pt) {
     int i;
     long total_frag = 0;
@@ -146,6 +163,9 @@ void pt_remove(struct ProcessTable* pt) {
     pt->count = 0;
 }
 
+/**
+ *  Calculate the integer 2-based logarithm
+ */
 int log2_custom(int number) {
     int i;
     for(i = 0; TWO_POWER(i) < number; i++);
@@ -158,22 +178,24 @@ int sbmem_init(int segmentsize)
     int fd, i;
 
     printf("sbmem init called\n"); // remove all printfs when you are submitting to us.
-    printf("hop1\n");
-    /* DIZLA */
 
     fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
 
     if( fd < 0)
-        return -1; // Error in shared memory creation
+        return -1;
 
+    // Calculate the total needed memory space
     int totalSize = OVER_HEAD_SEGMENT_SIZE + segmentsize;
 
     int segment_index = log2_custom(segmentsize);
 
+    // Initialize process table and alloc/dealloc semaphores
     semap = sem_open(SEM_NAME, O_CREAT, 0666, 1);
     pt_semap = sem_open(PT_SEM_NAME, O_CREAT | O_RDWR, 0666, 1);
     ftruncate(fd, totalSize);
 
+
+    // Map the shared memory
     void *shared_mem = mmap(NULL, totalSize, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     printf("Shared mem addr: %ld\n", (long)shared_mem);
     if( shared_mem == MAP_FAILED){
@@ -183,20 +205,22 @@ int sbmem_init(int segmentsize)
 
     char* p = (char*) shared_mem;
 
+    // Initialize all shared memory data to 0 (NULL)
     for( i = 0; i < totalSize; i++) {
         p[i] = '\0';
     }
 
+    // Initialize free list
     long* ptr = (long*) shared_mem;
     for(i = 0; i < 18; i++) {
         ptr[i] = 0;
-
         if(i == segment_index) {
             ptr[i] = (OVER_HEAD_SEGMENT_SIZE);
             printf("Buna atadım %ld\n", (long) ((char*) shared_mem + OVER_HEAD_SEGMENT_SIZE));
         }
     }
 
+    // Initialize process table
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
     pt_init(pt);
 
@@ -204,6 +228,7 @@ int sbmem_init(int segmentsize)
 
     printf("baslangic: %ld\n", (long)p);
 
+    // Set the first free list element
     struct OverHead* o_ptr = (struct OverHead* ) p;
 
     o_ptr->size = segmentsize;
@@ -229,6 +254,7 @@ int sbmem_remove()
     }
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
 
+    // Remove process table and destroy shared memory & semaphores
     pt_remove(pt);
     shm_unlink(SHM_NAME);
     sem_unlink(SEM_NAME);
@@ -251,13 +277,16 @@ int sbmem_open()
         perror("mmap err");
     }
 
+    // Set the freelist global variable
     freelists = (long*) shared_mem;
 
     pt = (struct ProcessTable*) ((char*) shared_mem + 18 * sizeof(long));
 
+    // Open needed semaphores
     semap = sem_open(SEM_NAME, O_RDWR);
     pt_semap = sem_open(PT_SEM_NAME, O_RDWR);
 
+    // If the shared memory is available add the process to process table
     sem_wait(pt_semap);
     if(pt_available(pt)) {
         pt_open(pt);
@@ -270,6 +299,7 @@ int sbmem_open()
     return (0);
 }
 
+// Find the required size for a memory allocation request
 int find_required_size(int size) {
     size = size + OVER_HEAD_BLOCK_SIZE;
     return log2_custom(size);
@@ -278,8 +308,11 @@ int find_required_size(int size) {
 void* sbmem_alloc(int size)
 {
     sem_wait(semap);
+
+    // Find the required size by shifting
     int required_size = 1 << (find_required_size(size));
 
+    // Allocate the memory if available
     void* ptr = alloc(required_size);
 
     if(ptr == NULL){
@@ -287,9 +320,11 @@ void* sbmem_alloc(int size)
         return NULL;
     }
 
+    // If memory is allocated set the memory to occupied
     struct OverHead* o_ptr = (struct OverHead*) ptr;
     o_ptr->tag = 0;
 
+    // Update the allocation & fragmentation info in the process table
     sem_wait(pt_semap);
     pt->allocated[process_i] += o_ptr->size;
     pt->frag[process_i] += (o_ptr->size) - size;
@@ -297,12 +332,14 @@ void* sbmem_alloc(int size)
 
     printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
 
+    // Return without the info, only the user part
     ptr =(void*) ((char*) ptr + sizeof(struct OverHead));
     sem_post(semap);
 
     return ptr;
 }
 
+// Deallocate the memory pointed by the user
 void sbmem_free (void *p)
 {
     sem_wait(semap);
@@ -314,6 +351,8 @@ void sbmem_free (void *p)
 
 }
 
+
+// Close the shared memory for the current process
 int sbmem_close()
 {
     sem_wait(pt_semap);
@@ -325,6 +364,8 @@ int sbmem_close()
     return (0);
 }
 
+
+// Find the buddy of the current block
 void* findbuddy(void* block) {
     struct OverHead* ohead = (struct OverHead*) block;
     long buddyNo = ((long) block - (long)((char*) shared_mem + 18 * sizeof(long))) / ohead->size;
@@ -346,10 +387,13 @@ void* alloc(int size) {
     int i;
     for(i = 0; TWO_POWER(i) < size; i++);
 
+
+    // If more memory requested, return null
     if( i > INDEX_SIZE) {
         return NULL;
     }
-    else if(freelists[i] != 0) {
+    else if(freelists[i] != 0) { 
+        // If freelist is not empty, allocate the memory
         void* block;
         block = (void*) (freelists[i] + (long) shared_mem);
 
@@ -370,16 +414,14 @@ void* alloc(int size) {
         return block;
     }
     else {
+        // Divide the first bigger free memory available, then call the function again 
         void* block;
         void* buddy;
         block = alloc(TWO_POWER(i+1));
 
         if(block != NULL) {
 
-            //Bölme işlemi yap
-            //buddyi free yap listeye koy
-            //blocku dön
-
+            // Calculate the buddy and block size
             struct OverHead* block_ptr = (struct OverHead*) block;
             block_ptr->size = block_ptr->size / 2;
             printf("BOL: %d, %d\n",block_ptr->size, i);
@@ -387,6 +429,7 @@ void* alloc(int size) {
             buddy = findbuddy(block);
             struct OverHead* buddy_ptr = (struct OverHead*) buddy;
 
+            // Put the buddy memory to the freelist
             buddy_ptr -> next = freelists[i];
             buddy_ptr -> prev = 0;
 
@@ -405,7 +448,7 @@ void* alloc(int size) {
             buddy_ptr -> tag = 1;
             block_ptr -> tag = 1;
             block_ptr->next = 0;
-            block_ptr->prev = 0; // change
+            block_ptr->prev = 0;
         }
         return block;
     }
@@ -423,9 +466,8 @@ void dealloc(void* block) {
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
 
-
-    //burayı elimle girdim 32 kbtan fazla olursa dönsün sıkıntı çıkmasın diye
-    if(i == 15) {
+    // If limit exceeded, put to freelist
+    if(i == SGM_SIZE) {
         freelists[i] = (long) block - (long) shared_mem;
         block_ptr->prev = 0;
         block_ptr->next = 0;
@@ -433,11 +475,11 @@ void dealloc(void* block) {
         return;
     }
 
+    // Find the buddy
     buddy = findbuddy(block);
     struct OverHead* buddy_ptr = (struct OverHead*) buddy;
 
-
-    // burada sizeın segmentsizea ulaşıp ulaşmadığını kontrol etmek lazım
+    // Deallocate the pointer, manage the freelist, size and tags
     if(buddy_ptr->tag == 0 || (buddy_ptr->tag == 1 && buddy_ptr->size != block_ptr->size)) {
         
         block_ptr->prev = 0;
@@ -488,5 +530,3 @@ void dealloc(void* block) {
         }
     }
 }
-
-
