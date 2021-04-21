@@ -55,21 +55,6 @@ int find_required_size(int size);
 void* findbuddy(void* block);
 
 /**
- *  Checks if the invoking process exists
- *  in the process table or not
- */
-int processExists(struct ProcessTable* pt) {
-    int i;
-    pid_t pid = getpid();
-
-    for( i = 0; i < 10; i++) {
-        if(pt->processes[i] == pid)
-            return 1;
-    }
-    return 0;
-}
-
-/**
  *  If process table (shared memory) is available
  *  for a new process, return true
  */
@@ -307,10 +292,14 @@ int find_required_size(int size) {
 
 void* sbmem_alloc(int size)
 {
-    sem_wait(semap);
-
     // Find the required size by shifting
     int required_size = 1 << (find_required_size(size));
+
+    // Check the size boundary
+    if(required_size < 128 || required_size > 4096)
+        return NULL;
+
+    sem_wait(semap);
 
     // Allocate the memory if available
     void* ptr = alloc(required_size);
@@ -368,7 +357,7 @@ int sbmem_close()
 // Find the buddy of the current block
 void* findbuddy(void* block) {
     struct OverHead* ohead = (struct OverHead*) block;
-    long buddyNo = ((long) block - (long)((char*) shared_mem + 18 * sizeof(long))) / ohead->size;
+    long buddyNo = ((long) block - (long)((char*) shared_mem + 18 * sizeof(long) + sizeof(struct ProcessTable))) / ohead->size;
     if( buddyNo % 2 == 0){
         return (void*) ((long) block + ohead->size);
     } else {
@@ -384,15 +373,19 @@ void* findbuddy(void* block) {
 }
 
 void* alloc(int size) {
-    int i;
+    int i, j;
     for(i = 0; TWO_POWER(i) < size; i++);
 
+    //printf("Alloc basi: ");
+    //for(j = 0; j < 18; j++) printf("%ld\t", freelists[j]);
+
+    //printf("\n");
 
     // If more memory requested, return null
-    if( i > INDEX_SIZE) {
+    if( i > log2_custom(SGM_SIZE)) {
         return NULL;
     }
-    else if(freelists[i] != 0) { 
+    else if(freelists[i] != 0) {
         // If freelist is not empty, allocate the memory
         void* block;
         block = (void*) (freelists[i] + (long) shared_mem);
@@ -414,7 +407,7 @@ void* alloc(int size) {
         return block;
     }
     else {
-        // Divide the first bigger free memory available, then call the function again 
+        // Divide the first bigger free memory available, then call the function again
         void* block;
         void* buddy;
         block = alloc(TWO_POWER(i+1));
@@ -467,7 +460,7 @@ void dealloc(void* block) {
     for(i = 0; TWO_POWER(i) < size; i++);
 
     // If limit exceeded, put to freelist
-    if(i == SGM_SIZE) {
+    if(i == log2_custom(SGM_SIZE)) {
         freelists[i] = (long) block - (long) shared_mem;
         block_ptr->prev = 0;
         block_ptr->next = 0;
@@ -481,7 +474,7 @@ void dealloc(void* block) {
 
     // Deallocate the pointer, manage the freelist, size and tags
     if(buddy_ptr->tag == 0 || (buddy_ptr->tag == 1 && buddy_ptr->size != block_ptr->size)) {
-        
+
         block_ptr->prev = 0;
         block_ptr->tag = 1;
 
