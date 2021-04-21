@@ -265,14 +265,15 @@ int find_required_size(int size) {
 
 void* sbmem_alloc(int size)
 {
+    sem_wait(semap);
     int required_size = 1 << (find_required_size(size));
 
-    sem_wait(semap);
     void* ptr = alloc(required_size);
-    sem_post(semap);
 
-    if(ptr == NULL)
+    if(ptr == NULL){
+        sem_post(semap);
         return NULL;
+    }
 
     struct OverHead* o_ptr = (struct OverHead*) ptr;
     o_ptr->tag = 0;
@@ -281,16 +282,17 @@ void* sbmem_alloc(int size)
     printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
 
     ptr =(void*) ((char*) ptr + sizeof(struct OverHead));
+    sem_post(semap);
 
     return ptr;
 }
 
 void sbmem_free (void *p)
 {
+    sem_wait(semap);
     p =(void*) ((char*) p - sizeof(struct OverHead));
     struct OverHead* o_ptr = (struct OverHead*) p;
     o_ptr->tag = 1;
-    sem_wait(semap);
     dealloc(p);
     sem_post(semap);
 
@@ -319,28 +321,24 @@ void* alloc(int size) {
     int i;
     for(i = 0; TWO_POWER(i) < size; i++);
 
-    if( i >= INDEX_SIZE) {
-        //printf("No space exists\n");
+    if( i > INDEX_SIZE) {
         return NULL;
     }
     else if(freelists[i] != 0) {
         void* block;
-        block = (void*) (freelists[i] + (long) shared_mem); // maybe cast to char* and add smem and cast to void*
+        block = (void*) (freelists[i] + (long) shared_mem);
 
         struct OverHead* block_ptr = (struct OverHead*) block;
         freelists[i] = block_ptr->next;
 
+        printf("Mem address: %ld\n", (long) block);
+
+
         void* next_block = (void*) (block_ptr->next + (long) shared_mem);
         struct OverHead* next_block_ptr = (struct OverHead*) next_block;
 
-        next_block_ptr -> prev = 0;
+        next_block_ptr->prev = 0;
 
-        //freelists[i] = *((void**)((long) freelists[i] + (long) shared_mem)); // maybe cast to char* and subtract smem and cast to void*
-        //printf("ELSE IF BIRADER!! %d, %d\n",block_ptr->size, i);
-
-        //*(void**)block = NULL;
-
-        // nexti ve previ null yap
         block_ptr->next=0;
         block_ptr->prev=0;
 
@@ -349,7 +347,6 @@ void* alloc(int size) {
     else {
         void* block;
         void* buddy;
-        //printf("else girdim %d\n", i);
         block = alloc(TWO_POWER(i+1));
 
         if(block != NULL) {
@@ -365,10 +362,6 @@ void* alloc(int size) {
             buddy = findbuddy(block);
             struct OverHead* buddy_ptr = (struct OverHead*) buddy;
 
-            //replace
-            //*(void**) buddy = freelists[i];
-            //freelists[i] = (void*) ((long) buddy - (long) shared_mem);
-
             buddy_ptr -> next = freelists[i];
             buddy_ptr -> prev = 0;
 
@@ -381,12 +374,13 @@ void* alloc(int size) {
 
             freelists[i] = (long) buddy - (long) shared_mem;
 
-
             buddy_ptr->status = block_ptr->status + 1;
             block_ptr->status = 0;
             buddy_ptr->size = block_ptr->size;
             buddy_ptr -> tag = 1;
             block_ptr -> tag = 1;
+            block_ptr->next = 0;
+            block_ptr->prev = 0;
         }
         return block;
     }
@@ -399,6 +393,7 @@ void dealloc(void* block) {
     int i;
     int size = block_ptr->size;
     printf("birlestirs %d\n", size);
+    printf("Mem address: %ld\n", (long) block);
     //void** p;
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
@@ -437,7 +432,7 @@ void dealloc(void* block) {
             block_ptr->tag = 1;
         }
     }
-    else if (buddy_ptr-> tag == 1) {  //buddy availablesa birleştir.
+    else if (buddy_ptr-> tag == 1 && buddy_ptr->size == block_ptr->size) {  //buddy availablesa birleştir.
 
         //buddy i freelistten çıkar
         if((void*) (freelists[i] + (long) shared_mem) == buddy) { //eğer freelist buddyi tutuyorsa
@@ -459,7 +454,6 @@ void dealloc(void* block) {
         }
 
         if(block_ptr->status == 0) {
-            buddy_ptr->size = buddy_ptr->size * 2;
             block_ptr->size = block_ptr->size * 2;
             block_ptr->status = buddy_ptr->status - 1;
             block_ptr->tag = 1;
@@ -468,7 +462,6 @@ void dealloc(void* block) {
         }
         else {
             buddy_ptr->size = buddy_ptr->size * 2;
-            block_ptr->size = block_ptr->size * 2;
             buddy_ptr->status = block_ptr->status - 1;
             block_ptr->tag = 1;
             buddy_ptr->tag = 1;
