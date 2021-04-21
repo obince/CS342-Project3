@@ -10,7 +10,7 @@ int main()
 {
     int i, ret, j, number, k;
     char* p[20];
-
+    char* ptr;
     /*
     printf("Hello\n");
     ret = sbmem_open();
@@ -42,20 +42,26 @@ int main()
                 exit(1);
             }
 
-            for(j = 0; j < 3; j++) {
+            for(j = 0; j < 10; j++) {
                 while( (number = rand() % 4096) < 128);
                 p[j] = sbmem_alloc(number);
                 if(p[j] == NULL) {
                     printf("No space available for %d\n", number);
                     continue;
                 }
-                p[j][31] = 's';
-                p[j][32] = 'a';
-                printf("%c\n", p[j][31]);
 
             }
+
+            for(k = 0; k < 10; k++) {
+                printf("%d %d %d %d\n",k,k,k,k);
+
+                if(p[k] != NULL)
+                    sbmem_free(p[k]);
+            }
         //}
-        //wait(NULL);
+        //else
+            //wait(NULL);
+        printf("bitti\n");
         /*
         char p[10];
         p[0] = '\0';
@@ -65,5 +71,5 @@ int main()
     //}
     //sbmem_close();
 
-    return (0);
+    return 0;
 }

@@ -51,7 +51,7 @@ struct TreeNode* head;
 void* memptr;
 int tots;
 int process_i;
-
+int index_size;
 //Function prot
 void dealloc(void* block);
 void* alloc(int size);
@@ -155,7 +155,7 @@ int sbmem_init(int segmentsize)
 {
     int fd, i;
 
-    printf ("sbmem init called\n"); // remove all printfs when you are submitting to us.
+    printf("sbmem init called\n"); // remove all printfs when you are submitting to us.
     printf("hop1\n");
     /* DIZLA */
 
@@ -275,7 +275,7 @@ void* sbmem_alloc(int size)
         return NULL;
 
     struct OverHead* o_ptr = (struct OverHead*) ptr;
-
+    o_ptr->tag = 0;
     pt->allocated[process_i] += o_ptr->size;
     pt->frag[process_i] += (o_ptr->size) - size;
     printf("Block size: %d, Requested size: %d\n", o_ptr->size, size);
@@ -287,12 +287,13 @@ void* sbmem_alloc(int size)
 
 void sbmem_free (void *p)
 {
-    /*
-    sem_wait(semap);
     p =(void*) ((char*) p - sizeof(struct OverHead));
+    struct OverHead* o_ptr = (struct OverHead*) p;
+    o_ptr->tag = 1;
+    sem_wait(semap);
     dealloc(p);
     sem_post(semap);
-    */
+
 }
 
 int sbmem_close()
@@ -319,7 +320,7 @@ void* alloc(int size) {
     for(i = 0; TWO_POWER(i) < size; i++);
 
     if( i >= INDEX_SIZE) {
-        printf("No space exists\n");
+        //printf("No space exists\n");
         return NULL;
     }
     else if(freelists[i] != 0) {
@@ -354,7 +355,7 @@ void* alloc(int size) {
         if(block != NULL) {
 
             //Bölme işlemi yap
-            //buddyi free yap liste koy
+            //buddyi free yap listeye koy
             //blocku dön
 
             struct OverHead* block_ptr = (struct OverHead*) block;
@@ -371,10 +372,13 @@ void* alloc(int size) {
             buddy_ptr -> next = freelists[i];
             buddy_ptr -> prev = 0;
 
-            void* next_block = (void*) (buddy_ptr->next + (long) shared_mem);
-            struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+            if(buddy_ptr -> next != 0) {
+                void* next_block = (void*) (buddy_ptr->next + (long) shared_mem);
+                struct OverHead* next_block_ptr = (struct OverHead*) next_block;
 
-            next_block_ptr -> prev = (long) buddy - (long) shared_mem;
+                next_block_ptr -> prev = (long) buddy - (long) shared_mem;
+            }
+
             freelists[i] = (long) buddy - (long) shared_mem;
 
 
@@ -382,52 +386,95 @@ void* alloc(int size) {
             block_ptr->status = 0;
             buddy_ptr->size = block_ptr->size;
             buddy_ptr -> tag = 1;
+            block_ptr -> tag = 1;
         }
         return block;
     }
 }
 
-/*
+
 void dealloc(void* block) {
-    struct OverHead* block_ptr = (struct OverHead*) ((char*) block + sizeof(void*));
+    struct OverHead* block_ptr = (struct OverHead*) block;
 
     int i;
     int size = block_ptr->size;
     printf("birlestirs %d\n", size);
-    void** p;
+    //void** p;
     void* buddy;
     for(i = 0; TWO_POWER(i) < size; i++);
 
-    buddy = findbuddy(block);
-    p = &freelists[i];
 
-    while((*p != NULL) && ((void*)((long)*p + (long) shared_mem) != buddy)) p = (void**)((void*)((long)*p + (long) shared_mem));
-
-    if((void*)((long)*p + (long) shared_mem) != buddy) {
-        *(void**) block = freelists[i];
-        freelists[i] = (void*) ((long) block - (long) shared_mem);
+    //burayı elimle girdim 32 kbtan fazla olursa dönsün sıkıntı çıkmasın diye
+    if(i == 15) {
+        freelists[i] = (long) block - (long) shared_mem;
+        block_ptr->prev = 0;
+        block_ptr->next = 0;
+        block_ptr->tag = 1;
+        return;
     }
-    else {
-        *p = *(void**) buddy;
-        //*(void**) buddy = NULL;
-        //*(void**) block = NULL;
-        struct OverHead* buddy_ptr = (struct OverHead*) ((char*) buddy + sizeof(void*));
+
+    buddy = findbuddy(block);
+    struct OverHead* buddy_ptr = (struct OverHead*) buddy;
+
+
+    // if buddy is not available, add block into freelist and return
+    if(buddy_ptr -> tag == 0) {
+        //eğer freelist boşsa
+        if(freelists[i] == 0) {
+            freelists[i] = (long) block - (long) shared_mem;
+            block_ptr->prev = 0;
+            block_ptr->next = 0;
+            block_ptr->tag = 1;
+        }
+        else { //boş değilse
+            void* next_block = (void*) (freelists[i] + (long) shared_mem);
+            struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+
+            block_ptr->next = freelists[i];
+            freelists[i] = (long) block - (long) shared_mem;
+            block_ptr->prev = 0;
+            next_block_ptr->prev = (long) block - (long) shared_mem;
+            block_ptr->tag = 1;
+        }
+    }
+    else if (buddy_ptr-> tag == 1) {  //buddy availablesa birleştir.
+
+        //buddy i freelistten çıkar
+        if((void*) (freelists[i] + (long) shared_mem) == buddy) { //eğer freelist buddyi tutuyorsa
+            freelists[i] = buddy_ptr->next;
+            if(buddy_ptr-> next != 0) { //NULL değilse
+                void* next_block = (void*) (buddy_ptr->next + (long) shared_mem);
+                struct OverHead* next_block_ptr = (struct OverHead*) next_block;
+
+                next_block_ptr->prev = 0;
+            }
+        }
+        else { //eğer freelist buddyi tutmuyorsa
+            void* prev_block = (void*) (buddy_ptr->prev + (long) shared_mem);
+            struct OverHead* prev_block_ptr = (struct OverHead*) prev_block;
+
+            prev_block_ptr->next = buddy_ptr->next;
+            buddy_ptr ->next = 0;
+            buddy_ptr ->prev = 0;
+        }
+
         if(block_ptr->status == 0) {
             buddy_ptr->size = buddy_ptr->size * 2;
             block_ptr->size = block_ptr->size * 2;
             block_ptr->status = buddy_ptr->status - 1;
+            block_ptr->tag = 1;
+            buddy_ptr->tag = 1;
             dealloc(block);
         }
         else {
             buddy_ptr->size = buddy_ptr->size * 2;
             block_ptr->size = block_ptr->size * 2;
             buddy_ptr->status = block_ptr->status - 1;
+            block_ptr->tag = 1;
+            buddy_ptr->tag = 1;
             dealloc(buddy);
         }
     }
 }
 
-void sbmem_deneme(void* ptr) {
-    struct OverHead* o_ptr = (struct OverHead*) ((char*) ptr - sizeof(struct OverHead));
-    printf("%d\n", o_ptr->size);
-} */
+
