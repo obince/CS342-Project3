@@ -1,4 +1,3 @@
-
 #include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,12 +10,21 @@
 
 #include "sbmem.h"
 
-int main()
+int main(int argc, char const *argv[])
 {
+	if(argc != 2){
+		fprintf(stderr, "Enter the segment size\n");
+		return -1;
+	}
+	int segsize = atoi(argv[1]);
+	if( segsize < 32768 || segsize > 262144){
+		fprintf(stderr, "Wrong segment size\n");
+		return -1;
+	}
+	
+	sbmem_init(segsize);
 
-    sbmem_init(32768);
-
-    printf ("memory segment is created and initialized \n");
-
-    return (0);
+   return (0);
+	return 0;
 }
+
