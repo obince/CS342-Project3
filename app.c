@@ -42,6 +42,6 @@ int main()
         }
     }
     for(i = 0; i < 5; i++) wait(NULL);
-    printf("bitti\n");
+    printf("bitti");
     return 0;
 }

@@ -7,6 +7,7 @@
 #include <sys/shm.h>
 #include <sys/mman.h>
 #include <semaphore.h>
+#include <errno.h>
 
 // Shared memory name
 #define SHM_NAME "/name_project3"
@@ -18,6 +19,8 @@ sem_t* semap;
 sem_t* pt_semap;
 
 // Defined constants
+#define MAX_SEGMENT_SIZE 262144
+#define MIN_SEGMENT_SIZE 32768
 #define INDEX_SIZE 18
 #define TWO_POWER(i) (1 << (i))
 #define OVER_HEAD_SEGMENT_SIZE 18 * sizeof(long) + sizeof(struct ProcessTable)
@@ -160,14 +163,29 @@ int log2_custom(int number) {
 
 int sbmem_init(int segmentsize)
 {
+
+    if( segmentsize < MIN_SEGMENT_SIZE || segmentsize > MAX_SEGMENT_SIZE) {
+        printf("Wrong segment size is given. Segment size must be in [%d, %d] boundary.\n", MIN_SEGMENT_SIZE, MAX_SEGMENT_SIZE);
+        return -1;
+    }
+
     int fd, i;
 
     printf("sbmem init called\n"); // remove all printfs when you are submitting to us.
 
-    fd = shm_open(SHM_NAME, O_CREAT | O_RDWR, 0666);
+    fd = shm_open(SHM_NAME, O_CREAT | O_EXCL | O_RDWR , 0666);
 
-    if( fd < 0)
-        return -1;
+    if( fd == -1) {
+        if(errno == EEXIST) {
+            shm_unlink(SHM_NAME);
+            fd = shm_open(SHM_NAME, O_CREAT | O_RDWR , 0666);
+
+            if(fd < 0)
+                return -1;
+        }
+        else
+            return -1;
+    }
 
     // Calculate the total needed memory space
     int totalSize = OVER_HEAD_SEGMENT_SIZE + segmentsize;
@@ -175,8 +193,35 @@ int sbmem_init(int segmentsize)
     int segment_index = log2_custom(segmentsize);
 
     // Initialize process table and alloc/dealloc semaphores
-    semap = sem_open(SEM_NAME, O_CREAT, 0666, 1);
-    pt_semap = sem_open(PT_SEM_NAME, O_CREAT | O_RDWR, 0666, 1);
+    semap = sem_open(SEM_NAME, O_CREAT | O_EXCL, 0666, 1);
+
+    if( semap == SEM_FAILED) {
+        if(errno == EEXIST) {
+            sem_unlink(SEM_NAME);
+            semap = sem_open(SEM_NAME, O_CREAT, 0666, 1);
+
+            if(semap == SEM_FAILED)
+                return -1;
+        }
+        else
+            return -1;
+    }
+
+    pt_semap = sem_open(PT_SEM_NAME, O_CREAT | O_EXCL | O_RDWR, 0666, 1);
+
+    if( pt_semap == SEM_FAILED) {
+        if(errno == EEXIST) {
+            sem_unlink(PT_SEM_NAME);
+            semap = sem_open(PT_SEM_NAME, O_CREAT | O_RDWR, 0666, 1);
+
+            if(semap == SEM_FAILED)
+                return -1;
+        }
+        else
+            return -1;
+    }
+
+
     ftruncate(fd, totalSize);
 
 
